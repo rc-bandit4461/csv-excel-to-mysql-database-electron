@@ -6,3 +6,5 @@ You can refer to it from this :https://github.com/aymanboubleh/ImportCSVToMySQLN
 important: this app can export the configuration file to this NodeJS batch app.
 So, if you do not want to create the configuration file manually, you can use this app to have it configure it and you can export it.
 
+Fore more infos, you can read this report:https://drive.google.com/open?id=1T9SddLQO6l5iPlY5VF_mdwDPA9du53sw
+
