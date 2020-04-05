@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Mapping_CSV_BDD</title>
+    <link type="text/css" rel="stylesheet" href="./materialize/css/materialize.min.css" media="screen,projection" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+
+    <style>
+        h6 {
+            text-align: center;
+            font-weight: bold;
+
+        }
+
+        #plus {
+            font-weight: bold;
+            color: white;
+            font-size: 24px;
+        }
+
+        #uploadbutton {
+            margin: 5px auto;
+
+            display: block;
+        }
+        .color-red{
+            color:red;
+        }
+        .color-lightgreen{
+            color:#01de12;
+        }
+        .bold{
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid pt-0">
+        <h5 style="text-align: center;">Configuration courante</h5>
+        <table>
+            <tr>
+                <td class="blue lighten-3">
+                    <span class="config">Host </span>
+                </td>
+                <td class="blue lighten-5">
+                    <span id="host">Not Set</span>
+                </td>
+            </tr>
+            <tr>
+                <td class="blue lighten-3">
+                    <span class="config">User </span>
+                </td>
+                <td class="blue lighten-5">
+                    <span id="user" >Not Set</span>
+                </td>
+            </tr>
+            <tr style="display: none">
+                <td class="blue lighten-3 text-bold">
+                    <span class="config ">Password </span>
+                </td>
+                <td class="blue lighten-5">
+                    <span id="password">Not Set</span>
+                </td>
+            </tr>
+            <tr>
+                <td class="blue lighten-3">
+                    <span class="config">Database </span>
+                </td >
+                <td class="blue lighten-5">
+                    <span id="database">Not Set</span>
+                </td>
+            </tr>
+            <tr>
+                <td class="blue lighten-3">
+                    <span class="config">table </span>
+                </td>
+                <td class="blue lighten-5">
+                    <span id="table">Not Set</span>
+                </td>
+            </tr>
+            <tr>
+                <td class="blue lighten-3">
+                    <span class="config">Connection Status </span>
+                </td>
+                <td class="blue lighten-5">
+                    <span id="status">Not Set</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+    <div class="container">
+        <div class="row">
+            <div action="#" id="targetcolumnsDiv" class="col s12"></div>
+            <div id="targetcolumnsDiv2"></div>
+        </div>
+        <div class="row">
+
+            <div class="col s6">
+                
+                <button style="float:right" id="selectFileButton" class="btn waves-effect waves-light blue darken-2">
+                    <span id="nope">Choisir</span>
+                </button>
+            </div>
+            <div class="col s6">
+                
+                <button disabled id="uploadButton" class="btn waves-effect waves-red teal lighten-1" style="float:left;">
+                    Upload
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- <button id="uploadbutton">Upload</button> -->
+            
+
+          
+
+    <p><span class="config"></span><span id="message"></span></p>
+    <script src="./materialize/js/materialize.min.js"></script>
+    <script>
+         const fs = require('fs');
+         const { ipcRenderer } = require('electron');
+         const mysql = require('mysql');
+         let app = require('electron').remote;
+         var csvtojson = require('csvtojson');
+         let dialog = app.dialog;
+         let currentconfig = false;
+         let config;
+         var con;
+         let tablecolumns = [];
+         let check = true;
+         let targetfile;
+         let targetcolumnsDiv = document.querySelector('#targetcolumnsDiv');
+         let selectFileButton = document.querySelector('#selectFileButton');
+         let uploadButton = document.querySelector('#uploadButton');
+         let data;
+         let columns = [];
+         let targetcolumns = {};
+         const defaultconfigpath = './config.json';
+        selectFileButton.disabled = true;
+         fs.access(defaultconfigpath, fs.F_OK, (err) => {
+             if (err) {
+                 showMessage("warning", "Warning", "Pas de configuration par défaut trouvé.", "");
+                 return
+             }
+             console.log("Config exists!");
+             fs.readFile(defaultconfigpath, function (err, buf) {
+                 config = JSON.parse(buf.toString());
+                 console.log(config);
+                 if (!verifyJson(config)) {
+                     currentconfig = false;
+                     showMessage("error", "Corrupted file", "La configuration selectionné est corrompue.", "La configuration chargée est corrompue ou non complétée.");
+                     return;
+                 }
+                 else {
+                     clear();
+                     currentconfig = config;
+                     getTableColumns();
+                     console.log("Default config loaded!");
+                     ipcRenderer.send('configchange:add', currentconfig);
+                     checkConnectionStatus();
+                     printConfigFile();
+
+                 }
+             })
+         });
+
+         ipcRenderer.on('configchange:add', function (event, item) {
+             currentconfig = item;
+             console.log("Main.html : Event configchange -> config CHANGED!\n");
+             clear();
+             getTableColumns();
+             console.log(currentconfig);
+             printConfigFile();
+             checkConnectionStatus();
+            //  ipcRenderer.send('resetHeight:add','1');
+         });
+         document.querySelector('#selectFileButton').addEventListener('click', function (event) {
+             console.log('select');
+             if (currentconfig != false) {
+                 dialog.showOpenDialog({
+                     properties: ['openFile'],
+                     filters: [
+                         { name: 'fichiers CSV', extensions: ['csv'] },
+                         { name: 'Tous les fichiers', extensions: ['*'] }
+                     ]
+                 }, function (filenames) {
+                     if (filenames === undefined) {
+                         //if no files selected --> exit
+                         console.log("No files selected");
+                         return;
+                     }
+                     //file has been successfully selected
+                     console.log(filenames[0].substr(filenames[0].lastIndexOf('.')));
+                     if (filenames[0].substr(filenames[0].lastIndexOf('.')) !== '.csv') {
+                         showMessage("error", "Erreur survenue", "Le fichier selectionné n'est pas un CSV!", "");
+                         return;
+                         
+                        }
+                        var csvconv = new csvtojson();
+                        csvconv.fromFile(filenames[0]).then(source => {
+                            console.log(source + "\n");
+                            console.log(currentconfig);
+                            //what if the file is NOT a csv?
+                            loadFileColumns(source);
+                            if(columns.length == 0){
+                                
+                            showMessage("error", "Erreur survenue", "le fichier selectionné est vide ou n'est pas sous format CSV!", "");
+                            return;
+                         }
+                         ipcRenderer.send('columnscount:add',tablecolumns.length);
+                         
+                         data = source;
+                         console.log(columns);
+                         generateSelects();
+                         constructTargetColumns();
+                         ipcRenderer.send('targetcolumns:add',targetcolumns);
+                         uploadButton.disabled = false;
+              
+                     });
+                 })
+             }
+             else {
+                 console.log("Main.html : Uploadclicked -> No config \currentconfig = " + currentconfig);
+                 showMessage("warning", "Warning: ", "Cannot upload!", "No configuration loaded.");
+                 return;
+             }
+
+         })
+         uploadButton.addEventListener('click', (event) => {
+                        // constructTargetColumns();
+                        console.log(targetcolumns);
+                        let result = constructSource(data, targetcolumns);
+                           con = mysql.createConnection({
+                            host: currentconfig.host,
+                            user: currentconfig.user,
+                            password: currentconfig.password,
+                            database: currentconfig.database
+                        });
+                            con.connect(function (err) {
+                             if (err) {
+                                 showMessage("error", "Erreur de connexion", "Verifier vos parametres de connexion : ", String(err));
+                                 return;
+                             }
+                             var query = InsertSQLQuery(currentconfig.tablename, result);
+                             con.query(query, function (err, result) {
+                                 if (err) {
+                                     showMessage("error", "Error occured", "Une erreur est survenue lors de l'execution de la requette : ", JSON.stringify(err));
+                                     return;
+                                 }
+
+                                 showMessage("info", "Succes : ", "", result.affectedRows + " Lignes affectés.", "");
+                                 console.log(JSON.stringify(result));
+                                 console.log(query);
+
+                             });
+                         });
+         });
+    
+         //functions /////////
+         function verifyJson(json) {
+             if (json.host === undefined) return false;
+             if (json.user === undefined) return false;
+             if (json.password === undefined) return false;
+             if (json.database === undefined) return false;
+             if (json.tablename === undefined) return false;
+             return true;
+         }
+         function constructTargetColumns(){
+             targetcolumns = {};
+             let selects = document.querySelectorAll('.columns');
+             selects.forEach(element => {
+                 targetcolumns[element.id] = element.options[element.selectedIndex].value;
+                 if(targetcolumns[element.id] == "null") targetcolumns[element.id] = null;
+             });
+             console.log(targetcolumns);
+         }
+    
+      function generateSelects() {
+        targetcolumnsDiv.innerHTML = '';
+        targetcolumns = {};
+        let str= '<h6 style="font-weight:normal"> Selectionnez la correspondance des colonnes </h6>';;
+            for (let i = 0; i < tablecolumns.length; i++) {
+                str+='<div class="col s6"><label for="">'+tablecolumns[i]+'  </label><span class="helper-text messagespans" data-error="wrong" data-success="right"></span>';
+                str +='<select id='+tablecolumns[i]+' class="btn waves-effect waves-dark blue lighten-5 columns" style="color:black">';
+                    if(i >= columns.length){
+                        for (let j = 0; j < columns.length; j++) {
+                            str+="<option value='"+columns[j]+"'>"+columns[j]+"</option>";
+                        }
+                        str+="<option value='null'style='font-weight:bold;color:orange' selected>NULL - DEF</option>";
+                    }
+                    else {
+                        for (let j = 0; j < columns.length; j++) {
+                            str += "<option value='" + columns[j] + "'";
+                            if(j == i) str+=" selected";
+                            str+= "> "+columns[j] + "</option > ";
+                        }
+                        str+="<option value='null' style='font-weight:bold;color:orange'>null-valeur par defaut</option>";
+                    }
+                    str +="</select></div>";
+            }
+            targetcolumnsDiv.innerHTML = str;
+                 document.querySelectorAll('select.columns').forEach(element => {
+              element.addEventListener('change', function (evnet) {
+                  constructTargetColumns();
+                  console.log(targetcolumns);
+                  ipcRenderer.send('targetcolumns:add', targetcolumns);
+              });
+          });
+      }  
+        function constructSource(source,columns){
+            let result = [];
+            source.forEach(element => {
+                    let obj = {};
+                    
+                    for (const key in columns) {
+                        if(columns[key] == "null" || columns[key] == null) continue;
+                            obj[key] = element[columns[key]];
+                    }
+                    result.push(obj);
+            });
+            console.log(result);
+            return result;
+        }
+         function InsertSQLQuery(tablename, Data) {
+             var query = "INSERT INTO " + tablename + " (";
+             var str = '';
+             for (x in Data[0]) {
+                 query += x + ',';
+             }
+             query = query.slice(0, -1);
+             query += ") values ";
+             for (obj of Data) {
+                 str += "(";
+                 for (x in obj) {
+                     str += "'" + obj[x] + "',"
+                 }
+                 str = str.slice(0, -1);
+                 str += "),";
+
+             }
+             query += str;
+             query = query.slice(0, -1);
+             query += ";"
+             return query;
+         }
+         function getTableColumns(){
+             tablecolumns = [];
+                    con = mysql.createConnection({
+                 host: currentconfig.host,
+                 user: currentconfig.user,
+                 password: currentconfig.password,
+                 database: currentconfig.database
+             });
+             con.connect(err => {
+                if(err) console.log("ERROR" + err);
+                else {
+
+                    con.query('desc ' + currentconfig.tablename, function(err,result){
+                        result.forEach(element => {
+                            tablecolumns.push(element['Field']);
+                        });
+                        console.log(result);
+                        console.log(tablecolumns);
+                    });
+                }
+             });
+            }
+         function clear() {
+             document.querySelector('#uploadButton').disabled = true;
+             document.querySelector('#targetcolumnsDiv').innerHTML = '';
+
+         }
+         function jsontotable(data, target) {
+             target.innerHTML = '';
+             target.innerHTML = "<thead><tr>";
+             for (x in data[0]) {
+                 target.innerHTML += "<th>" + x + "</th>";
+             }
+             target.innerHTML += "</tr></thead><tbody>";
+             for (obj of data) {
+                 target.innerHTML += "<tr>";
+                 for (x in obj) {
+                     target.innerHTML += obj[x];
+                 }
+                 target.innerHTML += "</tr>";
+             }
+             target.innerHTML += "</tbody>";
+         }
+         function loadcheckboxes(source){
+             targetcolumnsDiv.innerHTML = '<h6 style="font-weight:normal"> Selectionnez la correspondance des colonnes </h6>';
+             if (source.length == 0) return;
+             for (const key in source[0]) {
+                 targetcolumnsDiv.innerHTML += '<div class="col s6"><p><label><input type="checkbox" class="targetcolumns" onclick="CheckCheckboxes()" id="' + key + '" /><span>' + key + '</span></label></p></div>';
+                 // targetcolumnsDiv.innerHTML +='A ';
+             }
+         }
+         function loadFileColumns(source) {
+             
+             columns = [];
+             if (source.length == 0) return;
+             for (const key in source[0]) {
+                 columns.push(key);
+             }
+         }
+         function printConfigFile() {
+             document.querySelector("span#host").innerHTML = currentconfig.host;
+             document.querySelector("span#user").innerHTML = currentconfig.user;
+             document.querySelector("span#password").innerHTML = currentconfig.password;
+             document.querySelector("span#database").innerHTML = currentconfig.database;
+             document.querySelector("span#table").innerHTML = currentconfig.tablename;
+         }
+         function showMessage(type, title, message, detail) {
+             dialog.showMessageBox({
+                 type: type,
+                 buttons: [],
+                 title: title,
+                 message: message,
+                 detail: detail
+             });
+         }
+         function checkConnectionStatus() {
+             con = mysql.createConnection({
+                 host: currentconfig.host,
+                 user: currentconfig.user,
+                 password: currentconfig.password,
+                 database: currentconfig.database
+             });
+             con.connect(function (err) {
+                 if (err) {
+                     showMessage("error", "Connection failure", "Erreur de connexion vers la base de données!", String(err) + "\nVerifiez vos parametres de configuration");
+                     // $('#state').html('<span class="red bold">Non connecté</span>');
+                     document.querySelector('#status').innerHTML = '<span class="color-red bold">Non connecté</span>';
+                     selectFileButton.disabled = true;
+                     return;
+                 }
+                 document.querySelector('#status').innerHTML = '<span class="color-lightgreen bold">Connecté</span>';
+                 console.log("Connected!");
+                 
+                 selectFileButton.disabled = false;
+                //  document.querySelector('#selectFileButton').disabled = false;
+                 // var query = InsertSQLQuery(currentconfig.tablename, source);
+                 // con.query(query, function (err, result) {
+                 //     if (err) {
+                 //         showMessage("error", "Error occured", "an error occured while executing the query.", String(err));
+                 //         return;
+                 //     }
+
+                 //     showMessage("info", "Succes : ", "", result.affectedRows + " Lignes affectés.", "");
+                 //     console.log(JSON.stringify(result));
+                 //     console.log(query);
+
+                 // });
+             });
+         }
+
+</script>
+</body>
+
+</html>

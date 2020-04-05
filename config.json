@@ -1,0 +1,1 @@
+{"columnsMap":{"hardware":"hardware_kooka","price":"price_noob","sku":"title_loo_2","title":"title_loo"},"mapColumns":true,"targetFolder":"./files","dumpFolder":"./processed","logsFolder":"./logs","database":"test","host":"localhost","password":"prime123","tablename":"products","user":"root"}

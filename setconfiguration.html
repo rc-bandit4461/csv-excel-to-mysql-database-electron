@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Set Configuration</title>
+    <!--Import materialize.css-->
+    <link type="text/css" rel="stylesheet" href="./materialize/css/materialize.min.css" media="screen,projection" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<style>
+    div,input{
+        padding-top:0px;
+        padding-bottom: 0px;
+        margin-top:0px;
+        margin-bottom: 0px;
+    }
+</style>
+</head>
+
+<body>
+  <div class="container">
+      <!-- <div class="row"> -->
+        <div class="input-field col s12">
+<input type="text" id="host" class="inputs"><label for="">Host</label><span class="helper-text messagespans" data-error="wrong" data-success="right"></span>
+          </div>
+      <!-- </div> -->
+      <!-- <div class="row"> -->
+          <div class="input-field col s12">
+    <input type="text" id="user" class="inputs"><label for="user">user  </label><span class="helper-text messagespans" data-error="wrong" data-success="right"></span>
+
+          </div>
+      <!-- </div> -->
+      <!-- <div class="row"> -->
+          <div class="input-field col s12">
+    <input type="text" id="password" class="inputs" value=""><label for="password">password  </label><span class="helper-text messagespans" data-error="wrong" data-success="right"></span>
+
+          <!-- </div> -->
+      </div>
+      
+    <button class="btn waves-effect waves-light light-blue darken-2" id="loaddbbutton">Load Databases</button><br>
+    <label for="">database  </label><span class="helper-text messagespans" data-error="wrong" data-success="right"></span>
+<select class="btn waves-effect waves-light inputs disabled light-blue darken-2" id="dbselect"></select>
+    
+    <!-- <button id="loadtablebutton" disabled>Load</button><br> -->
+    <label for="">table name  </label><span class="helper-text messagespans" data-error="wrong" data-success="right"></span>
+<select class="btn waves-effect waves-light inputs disabled light-blue darken-2" id="tableselect"></select><span
+        class="messagespan"></span><br>
+    <button class="btn waves-effect waves-light light-blue darken-2" style="margin-top:10px" id="savebutton" disabled>Set configuration</button>
+  </div>
+<script src="./materialize/js/materialize.min.js"></script>
+<script>
+    const fs = require('fs');
+    const {ipcRenderer} = require('electron');
+    console.log(document.querySelector('#user').value);
+    const mysql = require('mysql');
+    let app = require('electron').remote;
+    let dialog = app.dialog;
+    let savebutton = document.querySelector('#savebutton');
+    let loaddbbutton = document.querySelector('#loaddbbutton');
+    let host = document.querySelector('#host');
+    let user = document.querySelector('#user');
+    let password = document.querySelector('#password');
+    let dbselect = document.querySelector('#dbselect');
+    let tableselect = document.querySelector('#tableselect');
+    let messagespans = document.querySelectorAll('.messagespans');
+    let inputs = document.querySelectorAll('.inputs');
+    let saveok = false;
+    let json;
+    function isEmptyString(value){
+        return !value.length;
+    }
+    function verifyElement(element){
+        if(isEmptyString(element.value))
+            {
+                element.nextSibling.nextSibling.innerHTML = "Ce champ est obligatoire!";
+                saveok = false;
+                return 0;
+            }
+            saveok = true;
+            return 1;
+    }
+
+dbselect.addEventListener('change',function(event){
+        savebutton.disabled = true;
+        ClearMessageSpans();
+        tableselect.innerHTML = '';
+        tableselect.className= "btn waves-effect waves-light inputs disabled light-blue darken-2";
+        if(dbselect.options[dbselect.selectedIndex].value != "null"){
+            console.log("!=NULL")
+            var con = mysql.createConnection({
+                host: host.value,
+                user: user.value,
+                password: password.value,
+                database: dbselect.options[dbselect.selectedIndex].value
+            });
+            con.connect(function (err) {
+                if (err) throw err;
+                con.query("show tables", function (err, result) {
+                    // tableselect.innerHTML = '';
+                    if(err){
+                        showMessage("error", "Error occured", "Error occured while loading tables", JSON.stringify(err));
+                        
+                    }
+                    if (result.length == 0) {
+                        tableselect.nextSibling.nextSibling.innerHTML = "Warning : There are no tables!";
+                        
+                        return;
+                    }
+                    // tableselect.innerHTML = '';
+                    tableselect.className= "btn waves-effect waves-light inputs light-blue darken-2";
+                    for (table of result) {
+                        for(x in table){
+                            tableselect.innerHTML += "<option value='" + table[x] + "'>" + table[x] + "</option>";
+                            
+                    }
+                    }
+                    console.log("tables loaded!");
+                    savebutton.disabled = false;
+                })
+            });
+        }
+    });
+   loaddbbutton.addEventListener('click',() => {
+       console.log("Clicked on  load!");
+       savebutton.disabled = true;
+       dbselect.innerHTML = '';
+       tableselect.innerHTML = '';
+       tableselect.className = "btn waves-effect waves-light inputs disabled light-blue darken-2";
+       dbselect.className = "btn waves-effect waves-light inputs disabled light-blue darken-2";
+       ClearMessageSpans();
+       if(!user.value){
+           user.nextSibling.nextSibling.innerHTML = "Saisir une valeur";
+        //    return;
+        }
+        if(!host.value){
+            host.nextSibling.nextSibling.innerHTML = "Saisir une valeur";
+            // return;
+       }
+       if(!user.value || !host.value) return;
+                      var con = mysql.createConnection({
+               host: host.value,
+               user: user.value,
+               password: password.value,
+           });
+           con.connect(function (err) {
+               try{
+                   con.query("show databases", function (err, result) {
+
+
+                        
+                            if(err){
+                                showMessage("warning","Connection error","Error connecting to mySQL","Check your connection settings!");
+                                return
+
+                            }
+                            if( result.length <= 4){
+                                dbselect.nextSibling.nextSibling.innerHTML = "There are no databases!";
+                                return;
+                            }
+                            dbselect.className = "btn waves-effect waves-light inputs light-blue darken-2";
+                            dbselect.innerHTML+="<option value='"+"null"+"'>"+"Choisir une BD"+"</option>";
+                          for (database of result) {
+                              console.log(database);
+                              if(database['Database'] =="MYSQL" || database['Database'] =="PHPMYADMIN" || database['Database']  == "INFORMATION_SCHEMA" || database['Database']  == "PERFORMANCE_SCHEMA") continue;
+                              dbselect.innerHTML+="<option value='"+database.Database+"'>"+database.Database+"</option>";
+                            }
+                            console.log("Databases loaded!");
+                   });
+               }
+               catch(err){
+                    showMessage("warning","Error","Error connecting to MySQL","Connection problem has occured!");
+               }
+           });
+   });
+    savebutton.addEventListener('click',function(event){
+        console.log(saveok)
+            json = {
+                "host": host.value,
+                "user": user.value,
+                "password": password.value,
+                "database": dbselect.options[dbselect.selectedIndex].value,
+                tablename: tableselect.options[tableselect.selectedIndex].value
+            };
+        ipcRenderer.send('configset:add',json);  
+        
+    });
+    //functions
+function showMessage(type,title,message,detail){
+        dialog.showMessageBox({
+        type: type,
+        buttons: [],
+        title: title,
+        message:message,
+        detail: detail
+    });
+}
+function ClearMessageSpans() {
+        for (var i = 0; i < messagespans.length; i++)
+            messagespans[i].innerHTML = '';
+    }
+</script>
+</body>
+</html>
